@@ -31,10 +31,22 @@ func _test_meters() -> void:
     var before_happiness := state.happiness
     state.advance(1.0, false)
     check(is_equal_approx(state.affection, before_affection), "idle grace retains affection")
-    check(is_equal_approx(state.happiness, before_happiness), "idle grace retains happiness")
+    check(state.happiness > before_happiness, "happiness continues growing after releasing strokes")
+    before_happiness = state.happiness
     state.advance(1.4, false)
     check(is_equal_approx(state.affection, before_affection - 3.5), "idle affection decays after grace")
-    check(is_equal_approx(state.happiness, before_happiness - 5.0), "idle happiness decays after grace")
+    check(state.happiness > before_happiness, "happiness still grows while affection decays")
+    var empty_affection := PetState.new()
+    empty_affection.happiness = 30.0
+    empty_affection.advance(2.4, false)
+    check(is_equal_approx(empty_affection.happiness, 25.0), "happiness decays after grace when no affection remains")
+    empty_affection.advance(20.0, false)
+    check(empty_affection.happiness == 0.0 and empty_affection.happiness_rate() == 0.0, "empty affection produces no happiness")
+    var lingering := PetState.new()
+    lingering.affection = 80.0
+    lingering.happiness = 99.99
+    lingering.advance(0.01, false)
+    check(lingering.celebrating, "residual affection can trigger celebration without petting")
     state.advance(100.0, false)
     check(state.affection == 0.0 and state.happiness == 0.0, "decay clamps at zero")
     state.advance(-1.0, true)
@@ -52,7 +64,8 @@ func _test_meters() -> void:
     var preserved_affection := joyful.affection
     joyful.advance(2.1, false)
     check(joyful.celebrating and joyful.happiness == 100.0, "full happiness held during animation")
-    joyful.advance(0.11, false)
+    while joyful.celebrating:
+        joyful.advance(1.0 / 60.0, false)
     check(not joyful.celebrating and joyful.happiness == 0.0, "animation finishes and happiness clears")
     check(is_equal_approx(joyful.affection, preserved_affection), "celebration preserves affection")
     check(events[1] == 1, "celebration finishes exactly once")
@@ -86,14 +99,31 @@ func _test_scene() -> void:
     room.player.position = Vector3(0, 0.02, 2.2)
     await physics_frame
     check(room.can_interact(), "close player facing pet can interact")
+    var orientation: Vector3 = room.player.camera.global_rotation
     room.hud.interaction_requested.emit()
-    check(room.menu_open and not room.player.controls_enabled, "interaction signal opens menu and stops movement")
+    check(room.menu_open and room.player.controls_enabled and room.player.interaction_active, "interaction menu keeps movement enabled")
+    var menu_motion := InputEventMouseMotion.new()
+    menu_motion.relative = Vector2(250, 170)
+    room.player._unhandled_input(menu_motion)
+    check(room.player.camera.global_rotation.is_equal_approx(orientation), "opening menu and moving cursor preserves camera orientation")
+    room.player.set_physics_process(true)
+    Input.action_press("move_left")
+    for i in range(8):
+        await physics_frame
+    Input.action_release("move_left")
+    room.player.set_physics_process(false)
+    check(room.player.position.x < -0.15, "WASD moves during interaction with visible cursor")
+    check(room.player.camera.global_rotation.is_equal_approx(orientation), "moving during interaction does not rotate view")
+    room.player.position = Vector3(0, 0.02, 2.2)
     room.hud.stroke_pressed.emit()
     room._process(0.1)
     check(room.pet.state.affection > 0.0 and room.pet.is_stroking, "holding interaction button pets animal")
     room.hud.stroke_released.emit()
     room._process(0.1)
     check(not room.pet.is_stroking, "releasing button stops petting")
+    var residual_happiness: float = room.pet.state.happiness
+    room._process(0.1)
+    check(room.pet.state.happiness > residual_happiness, "scene keeps generating happiness after button release")
     var affection: float = room.pet.state.affection
     room.hud.greeting_requested.emit()
     check(room.pet.presentation.greeting_remaining > 0.0, "greeting reaches presenter")
@@ -102,15 +132,21 @@ func _test_scene() -> void:
     room.hud.stroke_pressed.emit()
     room._process(0.1)
     check(room.pet.presentation.joyful, "full happiness starts native happy animation")
+    check(is_equal_approx(room.happiness_jar.fill_ratio, 1.0), "jar fills when happiness reaches maximum")
+    var reset_event := [false]
+    room.pet.state.celebration_finished.connect(func(): reset_event[0] = room.pet.state.happiness == 0.0)
     room.hud.stroke_released.emit()
     for i in range(24):
         room._process(0.1)
     check(not room.pet.presentation.joyful, "happy animation finishes")
-    check(room.pet.state.happiness == 0.0 and room.pet.state.affection > 0.0, "scene clears only happiness after celebration")
+    check(reset_event[0] and room.pet.state.affection > 0.0, "scene resets happiness at celebration end and retains affection")
+    check(room.pet.state.happiness > 0.0 and room.pet.state.happiness < 5.0, "happiness resumes growing after celebration")
+    check(is_equal_approx(room.happiness_jar.fill_ratio, room.pet.state.happiness / 100.0) and room.happiness_jar.fill_ratio < 0.05, "jar resets and tracks post-celebration happiness")
+    _test_jar(room.happiness_jar)
     room.player.rotation.y = PI
     check(not room.can_interact(), "looking away disables interaction")
     room._process(0.1)
-    check(not room.menu_open and not room.pointer_stroking, "invalid interaction closes menu and releases stroke")
+    check(not room.menu_open and not room.pointer_stroking and not room.player.interaction_active, "invalid interaction closes menu and releases stroke")
     room.player.rotation.y = 0.0
     var obstacle := StaticBody3D.new()
     var collision := CollisionShape3D.new()
@@ -164,3 +200,21 @@ func _test_scene() -> void:
     room.queue_free()
     await process_frame
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func _test_jar(jar: HappinessJar) -> void:
+    jar.set_happiness(0.0)
+    check(not jar.liquid.visible and not jar.surface.visible, "zero happiness hides all liquid")
+    jar.set_happiness(50.0)
+    check(jar.liquid.visible and is_equal_approx(jar.liquid.scale.y, HappinessJar.FILL_HEIGHT * 0.5), "half happiness fills half the jar")
+    check(is_equal_approx(jar.liquid.position.y - jar.liquid.scale.y * 0.5, HappinessJar.FLOOR_Y), "liquid bottom stays on jar base")
+    check(is_equal_approx(jar.surface.position.y, HappinessJar.FLOOR_Y + HappinessJar.FILL_HEIGHT * 0.5), "surface stays on top of liquid")
+    jar.set_happiness(100.0)
+    check(is_equal_approx(jar.liquid.scale.y, HappinessJar.FILL_HEIGHT), "full happiness fills to maximum height")
+    jar.set_happiness(25.0)
+    check(is_equal_approx(jar.liquid.scale.y, HappinessJar.FILL_HEIGHT * 0.25), "falling happiness lowers liquid volume")
+    jar.set_happiness(-5.0)
+    check(jar.fill_ratio == 0.0 and not jar.liquid.visible, "negative jar values clamp to empty")
+    jar.set_happiness(130.0)
+    check(jar.fill_ratio == 1.0, "jar values clamp to full")
+    check(jar.get_node("GlassWall").mesh is CylinderMesh, "jar is real cylindrical geometry")
+    check(jar.get_node("GlassWall").material_override.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA, "glass material is transparent")

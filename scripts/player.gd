@@ -5,6 +5,7 @@ const SPEED := 3.0
 const MOUSE_SENSITIVITY := 0.0023
 var camera: Camera3D
 var controls_enabled := true
+var interaction_active := false
 var focused := true
 var pitch := -0.15
 
@@ -31,14 +32,14 @@ func _ready() -> void:
     add_child(camera)
 
 func _unhandled_input(event: InputEvent) -> void:
-    if event is InputEventMouseMotion and controls_enabled and focused and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+    if event is InputEventMouseMotion and controls_enabled and focused and not interaction_active and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
         rotate_y(-event.relative.x * MOUSE_SENSITIVITY)
         pitch = clampf(pitch - event.relative.y * MOUSE_SENSITIVITY, -1.12, 1.12)
         camera.rotation.x = pitch
 
 func _physics_process(delta: float) -> void:
     var movement := Vector2.ZERO
-    if controls_enabled and focused and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+    if controls_enabled and focused and (interaction_active or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED):
         movement = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
     var direction := transform.basis * Vector3(movement.x, 0.0, movement.y)
     velocity.x = direction.x * SPEED

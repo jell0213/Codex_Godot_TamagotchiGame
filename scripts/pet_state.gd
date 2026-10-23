@@ -20,6 +20,8 @@ var idle_seconds := 0.0
 var celebration_seconds := 0.0
 
 func happiness_rate() -> float:
+    if affection <= 0.0:
+        return 0.0
     return 4.0 + 32.0 * pow(affection / MAX_VALUE, 1.6)
 
 func advance(delta: float, stroking: bool) -> void:
@@ -42,7 +44,8 @@ func _step(delta: float, stroking: bool) -> void:
         idle_seconds += delta
         var decay_time := maxf(0.0, idle_seconds - IDLE_GRACE) - maxf(0.0, previous_idle - IDLE_GRACE)
         affection = maxf(0.0, affection - AFFECTION_DECAY * decay_time)
-        happiness = maxf(0.0, happiness - HAPPINESS_DECAY * decay_time)
+        if affection <= 0.0:
+            happiness = maxf(0.0, happiness - HAPPINESS_DECAY * decay_time)
 
     if celebrating:
         celebration_seconds += delta
@@ -53,7 +56,7 @@ func _step(delta: float, stroking: bool) -> void:
             celebration_finished.emit()
         return
 
-    if stroking:
+    if affection > 0.0:
         happiness = minf(MAX_VALUE, happiness + happiness_rate() * delta)
         if happiness >= MAX_VALUE:
             celebrating = true

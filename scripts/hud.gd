@@ -112,7 +112,7 @@ func _build_meters() -> void:
     var happiness_row := _meter(column, "快樂度", ORANGE)
     happiness_bar = happiness_row[0]
     happiness_value = happiness_row[1]
-    rate_label = _label("撫摸時  +4.0 快樂 / 秒", 12, MUTED)
+    rate_label = _label("持續累積  +0.0 快樂 / 秒", 12, MUTED)
     column.add_child(rate_label)
     column.add_child(HSeparator.new())
     column.add_child(_label("快樂滿格 → 開心小跳舞\n只歸零快樂，保留你的撫摸。", 13, MUTED))
@@ -125,7 +125,7 @@ func _build_interactions() -> void:
     interaction_panel.custom_minimum_size = Vector2(530, 0)
     var column := _column(interaction_panel, 20)
     column.add_child(_label("陪毛毛一下", 20, INK))
-    column.add_child(_label("按住「撫摸」或空白鍵，放開就停止。", 14, MUTED))
+    column.add_child(_label("按住撫摸／空白鍵；WASD 可移動。", 14, MUTED))
     var row := HBoxContainer.new()
     row.add_theme_constant_override("separation", 10)
     column.add_child(row)
@@ -147,7 +147,7 @@ func _build_footer() -> void:
     root.add_child(note)
     note.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
     _offset(note, Vector2(40, -135))
-    var detail := _label("沒有互動時，撫摸與快樂會慢慢下降。\n回來摸摸牠就好。", 13, MUTED)
+    var detail := _label("撫摸的餘溫，會繼續累積快樂。\n看看罐子裡的液面吧。", 13, MUTED)
     root.add_child(detail)
     detail.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
     _offset(detail, Vector2(40, -94))
@@ -182,7 +182,7 @@ func update_view(state: PetState, nearby: bool, menu_open: bool, stroking: bool,
     happiness_bar.value = state.happiness
     affection_value.text = "%02d / 100" % roundi(state.affection)
     happiness_value.text = "%02d / 100" % roundi(state.happiness)
-    rate_label.text = "撫摸時  +%.1f 快樂 / 秒" % state.happiness_rate()
+    rate_label.text = "持續累積  +%.1f 快樂 / 秒" % state.happiness_rate()
     celebration_banner.visible = state.celebrating
     interaction_panel.visible = menu_open
     crosshair.visible = captured and not menu_open

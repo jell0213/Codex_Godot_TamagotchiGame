@@ -5,6 +5,7 @@ extends Node3D
 const INTERACTION_DISTANCE := 2.8
 var player: FirstPersonPlayer
 var pet: PetActor
+var happiness_jar: HappinessJar
 var hud: PetHUD
 var menu_open := false
 var pointer_stroking := false
@@ -19,6 +20,12 @@ func _ready() -> void:
     pet.name = "Momo"
     pet.position = Vector3(0.0, 0.9, 0.0)
     add_child(pet)
+    happiness_jar = HappinessJar.new()
+    happiness_jar.name = "HappinessJar"
+    happiness_jar.position = Vector3(-1.65, -0.02, 0.15)
+    add_child(happiness_jar)
+    pet.state.changed.connect(_update_jar)
+    _update_jar()
     player = FirstPersonPlayer.new()
     player.name = "Player"
     player.position = Vector3(0.0, 0.02, 4.3)
@@ -97,6 +104,7 @@ func _notification(what: int) -> void:
         if is_instance_valid(player):
             player.focused = false
             player.controls_enabled = true
+            player.interaction_active = false
     elif what == NOTIFICATION_APPLICATION_FOCUS_IN:
         focused = true
         if is_instance_valid(player):
@@ -111,14 +119,17 @@ func _open_interaction() -> void:
         return
     menu_open = true
     pointer_stroking = false
-    player.controls_enabled = false
+    player.interaction_active = true
     Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _close_interaction(capture: bool = true) -> void:
     menu_open = false
     pointer_stroking = false
-    player.controls_enabled = true
+    player.interaction_active = false
     Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if capture else Input.MOUSE_MODE_VISIBLE
+
+func _update_jar() -> void:
+    happiness_jar.set_happiness(pet.state.happiness)
 
 func _greet() -> void:
     if menu_open and can_interact() and greeting_cooldown <= 0.0 and not pet.state.celebrating:
